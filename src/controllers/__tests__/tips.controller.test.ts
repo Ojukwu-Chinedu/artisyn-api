@@ -54,12 +54,15 @@ describe("Tips Controller", () => {
             },
         });
 
-        // Delete users
-        if (sender?.id) {
-            await prisma.user.delete({ where: { id: sender.id } });
-        }
-        if (receiver?.id) {
-            await prisma.user.delete({ where: { id: receiver.id } });
+        await prisma.personalAccessToken.deleteMany({
+            where: {
+                OR: [{ token: senderToken }, { token: receiverToken }],
+            },
+        });
+
+        const userIds = [sender?.id, receiver?.id].filter(Boolean) as string[];
+        if (userIds.length > 0) {
+            await prisma.user.deleteMany({ where: { id: { in: userIds } } });
         }
     });
 
