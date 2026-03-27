@@ -1,4 +1,5 @@
 import { Request, Response } from "express";
+
 import { ApplicationStatus } from "@prisma/client";
 
 import BaseController from "./BaseController";
@@ -15,7 +16,6 @@ import { prisma } from "../db";
  * - Listing owners can view, accept, or reject applications
  */
 export default class ApplicationController extends BaseController {
-
   /**
    * POST /api/applications
    * Authenticated user applies to a listing
@@ -24,37 +24,74 @@ export default class ApplicationController extends BaseController {
     const applicantId = req.user?.id;
     if (!applicantId) throw new RequestError("Unauthenticated", 401);
 
-    const { listingId, message } = req.body;
+    const { listingId, message } = req.body as { listingId: string; message?: string };
 
-    // Validate listing exists
     const listing = await prisma.artisan.findUnique({
       where: { id: listingId },
-      select: { id: true, isActive: true }
+      select: {
+        id: true,
+        curatorId: true,
+        isActive: true,
+        archivedAt: true,
+        name: true,
+        description: true
+      }
     });
-    if (!listing) throw new RequestError("Listing not found", 404);
-    if (!listing.isActive) throw new RequestError("Listing is not active", 400);
 
-    // Prevent duplicate active applications
+    if (!listing) throw new RequestError("Listing not found", 404);
+    if (!listing.isActive || listing.archivedAt) {
+      throw new RequestError("Listing is not accepting applications", 400);
+    }
+    if (listing.curatorId === applicantId) {
+      throw new RequestError("You cannot apply to your own listing", 403);
+    }
+
     const existing = await prisma.application.findFirst({
       where: {
         listingId,
         applicantId,
-        status: { in: ['PENDING', 'ACCEPTED'] }
+        status: {
+          in: [ApplicationStatus.PENDING, ApplicationStatus.ACCEPTED]
+        }
       }
     });
-    if (existing) throw new RequestError("You already have an active application for this listing", 409);
+
+    if (existing) {
+      throw new RequestError("You already have an active application for this listing", 409);
+    }
 
     const application = await prisma.application.create({
-      data: { listingId, applicantId, message },
+      data: {
+        listingId,
+        applicantId,
+        message: message?.trim() || undefined,
+        status: ApplicationStatus.PENDING
+      },
       include: {
-        listing: { select: { id: true, name: true, description: true, curatorId: true } },
-        applicant: { select: { id: true, firstName: true, lastName: true, email: true, avatar: true, phone: true } }
+        listing: {
+          select: {
+            id: true,
+            name: true,
+            description: true,
+            curatorId: true
+          }
+        },
+        applicant: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            email: true,
+            avatar: true,
+            phone: true
+          }
+        }
       }
     });
 
     new ApplicationResource(req, res, application)
       .json()
-      .additional({ status: 'success', message: 'Application submitted successfully', code: 201 })
+      .additional({ status: "success", message: "Application submitted successfully", code: 201 })
       .status(201);
   };
 
@@ -72,7 +109,7 @@ export default class ApplicationController extends BaseController {
 
     if (!application) throw new RequestError("Application not found", 404);
     if (application.applicantId !== userId) throw new RequestError("Unauthorized", 403);
-    if (application.status !== 'PENDING') {
+    if (application.status !== "PENDING") {
       throw new RequestError("Only pending applications can be deleted", 400);
     }
 
@@ -80,7 +117,7 @@ export default class ApplicationController extends BaseController {
 
     new ApplicationResource(req, res, {})
       .json()
-      .additional({ status: 'success', message: 'Application deleted successfully', code: 202 })
+      .additional({ status: "success", message: "Application deleted successfully", code: 202 })
       .status(202);
   };
 
@@ -96,7 +133,6 @@ export default class ApplicationController extends BaseController {
       throw new RequestError("Unauthenticated", 401);
     }
 
-    // Fetch listing to verify ownership
     const listing = await prisma.artisan.findUnique({
       where: { id: listingId },
       select: { id: true, curatorId: true }
@@ -106,17 +142,13 @@ export default class ApplicationController extends BaseController {
       throw new RequestError("Listing not found", 404);
     }
 
-    // Check ownership - only the listing owner can view applications
     if (listing.curatorId !== userId) {
       throw new RequestError("Unauthorized access to this listing", 403);
     }
 
     const { take, skip, meta } = this.pagination(req);
-
-    // Fetch applications with filtering
     const where: any = { listingId };
 
-    // Optional status filter
     if (req.query.status) {
       where.status = String(req.query.status).toUpperCase() as ApplicationStatus;
     }
@@ -126,7 +158,7 @@ export default class ApplicationController extends BaseController {
         where,
         take,
         skip,
-        orderBy: { createdAt: 'desc' },
+        orderBy: { createdAt: "desc" },
         include: {
           applicant: {
             select: {
@@ -158,8 +190,8 @@ export default class ApplicationController extends BaseController {
       .json()
       .status(200)
       .additional({
-        status: 'success',
-        message: 'Applications retrieved successfully',
+        status: "success",
+        message: "Applications retrieved successfully",
         code: 200
       });
   };
@@ -212,7 +244,6 @@ export default class ApplicationController extends BaseController {
       throw new RequestError("Application not found", 404);
     }
 
-    // Check authorization - only listing owner or applicant can view
     const isOwner = application.listing.curatorId === userId;
     const isApplicant = application.applicantId === userId;
 
@@ -242,16 +273,14 @@ export default class ApplicationController extends BaseController {
       throw new RequestError("Unauthenticated", 401);
     }
 
-    // Validate status value
-    const validStatuses = ['PENDING', 'ACCEPTED', 'REJECTED', 'WITHDRAWN'];
+    const validStatuses = ["PENDING", "ACCEPTED", "REJECTED", "WITHDRAWN"];
     if (!validStatuses.includes(status)) {
       throw new RequestError(
-        `Invalid status. Must be one of: ${validStatuses.join(', ')}`,
+        `Invalid status. Must be one of: ${validStatuses.join(", ")}`,
         400
       );
     }
 
-    // Fetch application with relationships
     const application = await prisma.application.findUnique({
       where: { id: applicationId },
       include: {
@@ -268,27 +297,20 @@ export default class ApplicationController extends BaseController {
       throw new RequestError("Application not found", 404);
     }
 
-    // Authorization checks
     const isOwner = application.listing.curatorId === userId;
     const isApplicant = application.applicantId === userId;
 
-    // Only applicant can withdraw
-    if (status === 'WITHDRAWN' && !isApplicant) {
-      throw new RequestError(
-        "Only the applicant can withdraw their application",
-        403
-      );
+    if (status === "WITHDRAWN" && !isApplicant) {
+      throw new RequestError("Only the applicant can withdraw their application", 403);
     }
 
-    // Only owner can accept/reject
-    if ((status === 'ACCEPTED' || status === 'REJECTED') && !isOwner) {
+    if ((status === "ACCEPTED" || status === "REJECTED") && !isOwner) {
       throw new RequestError(
         "Only the listing owner can accept or reject applications",
         403
       );
     }
 
-    // Validate state transitions
     this.validateStateTransition(application.status, status as ApplicationStatus);
 
     const finalApplication = await prisma.$transaction(async (tx) => {
@@ -317,7 +339,7 @@ export default class ApplicationController extends BaseController {
         }
       });
 
-      if (status === 'ACCEPTED') {
+      if (status === "ACCEPTED") {
         const existingJob = await tx.job.findUnique({
           where: { applicationId }
         });
@@ -371,7 +393,7 @@ export default class ApplicationController extends BaseController {
     new ApplicationResource(req, res, finalApplication)
       .json()
       .additional({
-        status: 'success',
+        status: "success",
         message: `Application status updated to ${status}`,
         code: 200
       })
@@ -391,17 +413,14 @@ export default class ApplicationController extends BaseController {
     newStatus: ApplicationStatus
   ): void {
     const allowedTransitions: Record<ApplicationStatus, ApplicationStatus[]> = {
-      PENDING: ['ACCEPTED', 'REJECTED', 'WITHDRAWN'],
+      PENDING: ["ACCEPTED", "REJECTED", "WITHDRAWN"],
       ACCEPTED: [],
       REJECTED: [],
       WITHDRAWN: []
     };
 
     if (!allowedTransitions[currentStatus].includes(newStatus)) {
-      throw new RequestError(
-        `Cannot transition from ${currentStatus} to ${newStatus}`,
-        400
-      );
+      throw new RequestError(`Cannot transition from ${currentStatus} to ${newStatus}`, 400);
     }
   }
 }

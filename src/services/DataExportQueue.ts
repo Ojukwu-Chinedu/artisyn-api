@@ -26,7 +26,11 @@ export class DataExportQueue {
             while (this.pending.size > 0) {
                 const [requestId] = this.pending;
                 this.pending.delete(requestId);
-                await dataExportService.processRequest(requestId);
+                try {
+                    await dataExportService.processRequest(requestId);
+                } catch (error) {
+                    console.error('Data export queue processing failed:', error);
+                }
             }
         } finally {
             this.processing = false;

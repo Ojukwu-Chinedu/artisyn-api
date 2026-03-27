@@ -2,6 +2,7 @@ import { existsSync } from 'node:fs';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 
+import { Prisma } from '@prisma/client';
 import { prisma } from 'src/db';
 import { sendMail } from 'src/mailer/mailer';
 import { logAuditEvent } from 'src/utils/auditLogger';
@@ -27,6 +28,18 @@ export class DataExportService {
         return existsSync(this.getExportFilePath(requestId, format));
     }
 
+    private async updateRequestIfExists(
+        requestId: string,
+        data: Prisma.DataExportRequestUpdateManyMutationInput,
+    ): Promise<boolean> {
+        const result = await prisma.dataExportRequest.updateMany({
+            where: { id: requestId },
+            data,
+        });
+
+        return result.count > 0;
+    }
+
     async processRequest(requestId: string) {
         const exportRequest = await prisma.dataExportRequest.findUnique({
             where: { id: requestId },
@@ -41,13 +54,14 @@ export class DataExportService {
             return exportRequest;
         }
 
-        await prisma.dataExportRequest.update({
-            where: { id: requestId },
-            data: {
-                status: 'processing',
-                errorMessage: null,
-            },
+        const movedToProcessing = await this.updateRequestIfExists(requestId, {
+            status: 'processing',
+            errorMessage: null,
         });
+
+        if (!movedToProcessing) {
+            return null;
+        }
 
         try {
             const exportPayload = await this.buildExportPayload(exportRequest.userId);
@@ -68,16 +82,25 @@ export class DataExportService {
             const expiresAt = new Date(Date.now() + DataExportService.downloadTtlMs);
             const downloadUrl = DataExportService.getDownloadUrl(exportRequest.id);
 
-            const updatedRequest = await prisma.dataExportRequest.update({
-                where: { id: exportRequest.id },
-                data: {
-                    status: 'ready',
-                    downloadUrl,
-                    expiresAt,
-                    fileSize,
-                    errorMessage: null,
-                },
+            const markedReady = await this.updateRequestIfExists(exportRequest.id, {
+                status: 'ready',
+                downloadUrl,
+                expiresAt,
+                fileSize,
+                errorMessage: null,
             });
+
+            if (!markedReady) {
+                return null;
+            }
+
+            const updatedRequest = await prisma.dataExportRequest.findUnique({
+                where: { id: exportRequest.id },
+            });
+
+            if (!updatedRequest) {
+                return null;
+            }
 
             await logAuditEvent(exportRequest.userId, 'DATA_EXPORT', {
                 entityType: 'DataExportRequest',
@@ -109,13 +132,22 @@ export class DataExportService {
             const errorMessage =
                 error instanceof Error ? error.message : 'Unknown data export failure';
 
-            const failedRequest = await prisma.dataExportRequest.update({
-                where: { id: requestId },
-                data: {
-                    status: 'failed',
-                    errorMessage,
-                },
+            const markedFailed = await this.updateRequestIfExists(requestId, {
+                status: 'failed',
+                errorMessage,
             });
+
+            if (!markedFailed) {
+                return null;
+            }
+
+            const failedRequest = await prisma.dataExportRequest.findUnique({
+                where: { id: requestId },
+            });
+
+            if (!failedRequest) {
+                return null;
+            }
 
             await logAuditEvent(exportRequest.userId, 'DATA_EXPORT', {
                 entityType: 'DataExportRequest',

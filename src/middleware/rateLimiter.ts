@@ -185,11 +185,28 @@ export const getRouteLimitConfig = (req: Request, route: string): RateLimitConfi
 
   return {
     ...selectedConfig,
-    keyGenerator: (req: Request) => {
-      // Use user ID if authenticated, otherwise use IP
-      return req.user ? `user-${(req.user as any).id}` : `ip-${req.ip}`;
-    },
+    keyGenerator: getRequestRateLimitKey,
   };
+};
+
+/**
+ * Generate a stable rate-limit key before auth middleware has populated req.user.
+ * If an Authorization header is present, scope the bucket to that caller instead
+ * of collapsing every authenticated request onto the shared test runner IP.
+ */
+export const getRequestRateLimitKey = (req: Request): string => {
+  if (req.user) {
+    return `user-${(req.user as any).id}`;
+  }
+
+  const authHeader = req.headers.authorization;
+  const token = authHeader?.split(' ')[1];
+
+  if (token) {
+    return `token-${token}`;
+  }
+
+  return `ip-${req.ip}`;
 };
 
 /**
@@ -198,9 +215,7 @@ export const getRouteLimitConfig = (req: Request, route: string): RateLimitConfi
 export const rateLimitMiddleware = createRateLimiter({
   windowMs: 15 * 60 * 1000,
   maxRequests: 100,
-  keyGenerator: (req: Request) => {
-    return req.user ? `user-${(req.user as any).id}` : `ip-${req.ip}`;
-  },
+  keyGenerator: getRequestRateLimitKey,
 });
 
 /**
