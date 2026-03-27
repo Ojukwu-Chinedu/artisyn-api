@@ -7,8 +7,6 @@ import { sendMail } from 'src/mailer/mailer';
 import { logAuditEvent } from 'src/utils/auditLogger';
 import { appUrl } from 'src/utils/helpers';
 
-type ExportFormat = 'json' | 'csv';
-
 export class DataExportService {
     private static readonly exportDirectory = path.join(process.cwd(), 'storage', 'data-exports');
     private static readonly downloadTtlMs = 7 * 24 * 60 * 60 * 1000;
@@ -171,19 +169,17 @@ export class DataExportService {
             throw new Error('User not found for export');
         }
 
-        const {
-            password,
-            emailVerificationCode,
-            linkedAccounts,
-            dataExportRequests,
-            ...safeUser
-        } = user;
+        const safeUser = Object.fromEntries(
+            Object.entries(user).filter(
+                ([key]) => !['password', 'emailVerificationCode', 'linkedAccounts', 'dataExportRequests'].includes(key),
+            ),
+        );
 
         return {
             exportedAt: new Date().toISOString(),
             user: safeUser,
-            linkedAccounts: linkedAccounts.map(({ accessToken, refreshToken, ...account }) => account),
-            dataExportRequests,
+            linkedAccounts: user.linkedAccounts.map(({ accessToken, refreshToken, ...account }) => account),
+            dataExportRequests: user.dataExportRequests,
         };
     }
 
