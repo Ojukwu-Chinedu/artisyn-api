@@ -16,7 +16,6 @@ describe('Listings API Integration Tests', () => {
     let listingId: string;
 
     beforeAll(async () => {
-        // Cleanup potential stale data from aborted runs
         await prisma.tip.deleteMany();
         await prisma.review.deleteMany();
         await prisma.application.deleteMany();
@@ -28,21 +27,21 @@ describe('Listings API Integration Tests', () => {
         await prisma.category.deleteMany();
         await prisma.location.deleteMany();
 
-        // 1. Setup Data: Create Category & Location
         const category = await prisma.category.create({ data: { name: 'Test Category' } });
         categoryId = category.id;
+
         const location = await prisma.location.create({
             data: { city: 'Test City', state: 'TS', country: 'Testland', latitude: 0, longitude: 0 }
         });
         locationId = location.id;
 
-        // 2. Setup Users: Curator & Regular User
         const curator = await prisma.user.create({
             data: {
                 email: 'curator@test.com', password: 'hash', firstName: 'C', lastName: 'T', role: UserRole.CURATOR
             }
         });
         curatorId = curator.id;
+
         const user = await prisma.user.create({
             data: {
                 email: 'user@test.com', password: 'hash', firstName: 'U', lastName: 'T', role: UserRole.USER
@@ -50,7 +49,6 @@ describe('Listings API Integration Tests', () => {
         });
         userId = user.id;
 
-        // 3. Generate Tokens
         const cAuth = generateAccessToken({ username: curator.email, id: curator.id, index: 1 });
         curatorToken = cAuth.token;
         await prisma.personalAccessToken.create({
@@ -63,7 +61,6 @@ describe('Listings API Integration Tests', () => {
             data: { token: uAuth.token, name: 'Test', userId: user.id, expiresAt: new Date(uAuth.jwt.exp! * 1000) }
         });
 
-        // 4. Create Initial Listing
         const listing = await prisma.artisan.create({
             data: {
                 name: 'Initial Listing',
@@ -79,17 +76,12 @@ describe('Listings API Integration Tests', () => {
     });
 
     afterAll(async () => {
-        // Cleanup
         await prisma.application.deleteMany();
         await prisma.artisan.deleteMany();
         await prisma.user.deleteMany();
         await prisma.category.deleteMany();
         await prisma.location.deleteMany();
     });
-
-    // =========================================================================
-    // Public Access Tests
-    // =========================================================================
 
     it('GET /api/listings should be public and return 200', async () => {
         const res = await request(app).get('/api/listings');
@@ -111,10 +103,6 @@ describe('Listings API Integration Tests', () => {
         expect(res.status).toBe(200);
         expect(res.body.data.id).toBe(listingId);
     });
-
-    // =========================================================================
-    // Authentication & Role Tests
-    // =========================================================================
 
     it('POST /api/listings should deny unauthenticated users (401)', async () => {
         const res = await request(app).post('/api/listings').send({});
@@ -152,14 +140,9 @@ describe('Listings API Integration Tests', () => {
             });
 
         expect(res.body.data.name).toBe('New Listing');
-        // Verify curator info is in response but stripped of sensitive data
         expect(res.body.data.curator.id).toBe(curatorId);
         expect(res.body.data.curator.password).toBeUndefined();
     });
-
-    // =========================================================================
-    // Update & Delete Tests
-    // =========================================================================
 
     it('PUT /api/listings/:id should return 202 on success', async () => {
         const res = await request(app)
@@ -175,7 +158,6 @@ describe('Listings API Integration Tests', () => {
     });
 
     it('DELETE /api/listings/:id should return 202 on success', async () => {
-        // Create a temporary listing to delete
         const tempListing = await prisma.artisan.create({
             data: { name: 'To Delete', description: '...', phone: '1', categoryId, locationId, curatorId }
         });
@@ -186,14 +168,9 @@ describe('Listings API Integration Tests', () => {
 
         expect(res.status).toBe(202);
 
-        // Verify deletion
         const check = await prisma.artisan.findUnique({ where: { id: tempListing.id } });
         expect(check).toBeNull();
     });
-
-    // =========================================================================
-    // Application Management Tests
-    // =========================================================================
 
     let applicationId: string;
 
@@ -283,7 +260,7 @@ describe('Listings API Integration Tests', () => {
                 categoryId,
                 locationId,
                 curatorId,
-                isActive: true,
+                isActive: true
             }
         });
 
@@ -300,5 +277,4 @@ describe('Listings API Integration Tests', () => {
             .expect(200);
         expect(withdrawRes.body.data.status).toBe('WITHDRAWN');
     });
-
 });
