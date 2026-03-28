@@ -27,6 +27,18 @@ const __dirname = path.dirname(__filename);
 export const initialize = async (app: Express) => {
   // ===== SECURITY MIDDLEWARE (Must be first) =====
 
+
+  // ===== BODY PARSING MIDDLEWARE =====
+  // Registered here only. Do not add body parsers in src/index.ts or any
+  // other bootstrap file — duplicate registration causes unpredictable
+  // request-processing behavior and makes middleware ordering harder to reason about.
+
+  // Parse application/json
+  app.use(express.json());
+
+  // Parse application/x-www-form-urlencoded (for non-multipart forms)
+  app.use(express.urlencoded({ extended: true }));
+
   // Security headers - protects against common vulnerabilities
   app.use(securityHeadersMiddleware);
 
