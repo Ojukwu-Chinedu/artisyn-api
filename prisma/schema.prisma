@@ -57,6 +57,11 @@ model User {
   emailVerificationCode String?   @db.VarChar(64)
   createdAt             DateTime  @default(now())
   updatedAt             DateTime  @updatedAt
+  deletionRequestedAt   DateTime?
+  deletionScheduledAt   DateTime?
+  dataExportRequests   DataExportRequest[]   @relation("DataExportRequests")
+  pendingDeletion      PendingDeletion?       // ← ADD THIS
+  applications         Application[]         @relation("Applications")
 
   // Relations
   curator              Curator?
@@ -74,8 +79,6 @@ model User {
   privacySettings      PrivacySettings?
   linkedAccounts       AccountLink[]         @relation("LinkedAccounts")
   auditLogs            AuditLog[]            @relation("UserAuditLogs")
-  dataExportRequests   DataExportRequest[]   @relation("DataExportRequests")
-  applications         Application[]         @relation("Applications")
   jobs                 Job[]
   locationId           String?
 
@@ -140,6 +143,19 @@ model PasswordCodeResets {
   @@index([email])
   @@map("password_code_resets")
 }
+
+model PendingDeletion {
+  id          String   @id @default(cuid())
+  userId      String   @unique
+  scheduledAt DateTime
+  token       String   @unique @default(uuid())
+  createdAt   DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("pending_deletions")
+}
+
 
 // Curator profile model
 model Curator {
@@ -782,3 +798,5 @@ model DataExportRequest {
   @@index([createdAt])
   @@map("data_export_requests")
 }
+
+
