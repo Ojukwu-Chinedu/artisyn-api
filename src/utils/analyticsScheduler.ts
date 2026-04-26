@@ -32,7 +32,7 @@ let cleanupInterval: NodeJS.Timeout | null = null;
  * Check whether the analytics scheduler is enabled via configuration.
  */
 const isSchedulerEnabled = (): boolean => {
-  return env("ENABLE_ANALYTICS_SCHEDULER") === true;
+  return env("ENABLE_ANALYTICS_SCHEDULER") === "true";
 };
 
 /**

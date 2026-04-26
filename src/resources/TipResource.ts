@@ -10,7 +10,7 @@ export default class extends JsonResource {
      * Build the response object
      * @returns Tip data formatted for API response
      */
-    data() {
+    data(): any {
         return {
             id: this.id,
             amount: this.amount,

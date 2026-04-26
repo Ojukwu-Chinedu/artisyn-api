@@ -8,6 +8,7 @@ import UserProfileResource from "src/resources/UserProfileResource";
 import { logAuditEvent } from 'src/utils/auditLogger';
 import { prisma } from 'src/db';
 import { profileValidationRules } from 'src/utils/profileValidators';
+import { PrivacyService } from 'src/services/PrivacyService';
 
 /**
  * UserProfileController - Manages user profile CRUD operations
@@ -83,7 +84,7 @@ export default class extends BaseController {
                 where: { userId },
             });
 
-            // Calculate completion percentage
+            // Calculate completion percentage from merged profile state
             const completionFields = [
                 'bio',
                 'dateOfBirth',
@@ -92,8 +93,15 @@ export default class extends BaseController {
                 'occupation',
                 'companyName',
             ];
+            
+            // Merge existing profile with request body
+            const mergedProfile = {
+                ...existingProfile,
+                ...req.body,
+            };
+            
             const filledFields = completionFields.filter(
-                field => req.body[field] !== undefined && req.body[field] !== null && req.body[field] !== ''
+                field => mergedProfile[field] !== undefined && mergedProfile[field] !== null && mergedProfile[field] !== ''
             ).length;
             const completionPercentage = Math.round((filledFields / completionFields.length) * 100);
 
@@ -184,28 +192,13 @@ export default class extends BaseController {
     getPublicProfile = async (req: Request, res: Response) => {
         try {
             const targetUserId = req.params.userId;
+            const viewerId = req.user?.id || null;
             RequestError.assertFound(targetUserId, 'User ID required', 400);
 
-            const profile = await prisma.userProfile.findFirst({
-                where: { userId: String(targetUserId) },
-                select: {
-                    id: true,
-                    userId: true,
-                    bio: true,
-                    profilePictureUrl: true,
-                    website: true,
-                    occupation: true,
-                    companyName: true,
-                    location: true,
-                    verifiedBadge: true,
-                    isProfessional: true,
-                    isPublic: true,
-                    createdAt: true,
-                },
-            });
+            // Use PrivacyService for unified visibility checking
+            const profile = await PrivacyService.getFilteredProfileData(viewerId, String(targetUserId));
 
             RequestError.assertFound(profile, 'Profile not found', 404);
-            RequestError.assertFound(profile.isPublic, 'Profile is private', 403);
 
             // Log public profile view
             await logAuditEvent(req.user?.id, 'PROFILE_VIEW', {

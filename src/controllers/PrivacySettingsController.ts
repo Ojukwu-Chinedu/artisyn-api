@@ -7,6 +7,7 @@ import { RequestError } from 'src/utils/errors';
 import { logAuditEvent } from 'src/utils/auditLogger';
 import { prisma } from 'src/db';
 import { privacySettingsValidationRules } from 'src/utils/profileValidators';
+import { PrivacyService } from 'src/services/PrivacyService';
 
 /**
  * PrivacySettingsController - Manages user privacy controls and GDPR compliance
@@ -111,24 +112,19 @@ export default class extends BaseController {
                 400
             );
 
-            const privacySettings = await prisma.privacySettings.upsert({
+            // Use PrivacyService for unified visibility management
+            await PrivacyService.updateProfileVisibility(userId, profileVisibility as any);
+
+            // Get updated privacy settings for response
+            const privacySettings = await prisma.privacySettings.findFirst({
                 where: { userId },
-                update: {
-                    profileVisibility,
-                    lastPrivacyReviewDate: new Date(),
-                },
-                create: {
-                    userId,
-                    profileVisibility,
-                    lastPrivacyReviewDate: new Date(),
-                },
             });
 
             // Log visibility change
             await logAuditEvent(userId, 'PRIVACY_CHANGE', {
                 req,
                 entityType: 'PrivacySettings',
-                entityId: privacySettings.id,
+                entityId: privacySettings?.id,
                 newValues: { profileVisibility },
                 statusCode: 200,
                 metadata: { changeType: 'profile_visibility' },
@@ -319,6 +315,216 @@ export default class extends BaseController {
             .additional({
                 status: 'success',
                 message: 'Data retention policy updated',
+                code: 200,
+            });
+    };
+
+    /**
+     * Add user to restricted list
+     */
+    addToRestrictedList = async (req: Request, res: Response) => {
+        try {
+            const userId = req.user?.id!;
+            const { restrictedUserId } = req.body;
+
+            RequestError.assertFound(userId, 'Unauthorized', 401);
+            RequestError.assertFound(restrictedUserId, 'Restricted user ID required', 400);
+            RequestError.abortIf(userId === restrictedUserId, 'Cannot restrict yourself', 400);
+
+            // Verify restricted user exists
+            const restrictedUser = await prisma.user.findUnique({
+                where: { id: restrictedUserId },
+            });
+            RequestError.assertFound(restrictedUser, 'User not found', 404);
+
+            const privacySettings = await prisma.privacySettings.findFirst({
+                where: { userId },
+            });
+
+            const restrictedList = privacySettings?.restrictedList || [];
+            if (!restrictedList.includes(restrictedUserId)) {
+                restrictedList.push(restrictedUserId);
+            }
+
+            const updated = await prisma.privacySettings.upsert({
+                where: { userId },
+                update: { restrictedList },
+                create: {
+                    userId,
+                    restrictedList,
+                },
+            });
+
+            // Log restriction action
+            await logAuditEvent(userId, 'PRIVACY_CHANGE', {
+                req,
+                entityType: 'PrivacySettings',
+                entityId: updated.id,
+                statusCode: 200,
+                metadata: { action: 'add_restricted_user', restrictedUserId },
+            });
+
+            new PrivacySettingsResource(req, res, { data: updated })
+                .json()
+                .status(200)
+                .additional({
+                    status: 'success',
+                    message: 'User added to restricted list',
+                    code: 200,
+                });
+        } catch (error) {
+            throw error;
+        }
+    };
+
+    /**
+     * Remove user from restricted list
+     */
+    removeFromRestrictedList = async (req: Request, res: Response) => {
+        try {
+            const userId = req.user?.id!;
+            const { restrictedUserId } = req.body;
+
+            RequestError.assertFound(userId, 'Unauthorized', 401);
+            RequestError.assertFound(restrictedUserId, 'Restricted user ID required', 400);
+
+            const privacySettings = await prisma.privacySettings.findFirst({
+                where: { userId },
+            });
+
+            const restrictedList = privacySettings?.restrictedList || [];
+            const updatedRestrictedList = restrictedList.filter((id: string) => id !== restrictedUserId);
+
+            const updated = await prisma.privacySettings.update({
+                where: { userId },
+                data: { restrictedList: updatedRestrictedList },
+            });
+
+            // Log unrestrict action
+            await logAuditEvent(userId, 'PRIVACY_CHANGE', {
+                req,
+                entityType: 'PrivacySettings',
+                entityId: updated.id,
+                statusCode: 200,
+                metadata: { action: 'remove_restricted_user', restrictedUserId },
+            });
+
+            new PrivacySettingsResource(req, res, { data: updated })
+                .json()
+                .status(200)
+                .additional({
+                    status: 'success',
+                    message: 'User removed from restricted list',
+                    code: 200,
+                });
+        } catch (error) {
+            throw error;
+        }
+    };
+
+    /**
+     * Get restricted list
+     */
+    getRestrictedList = async (req: Request, res: Response) => {
+        const userId = req.user?.id!;
+        RequestError.assertFound(userId, 'Unauthorized', 401);
+
+        const privacySettings = await prisma.privacySettings.findFirst({
+            where: { userId },
+        });
+
+        const restrictedList = privacySettings?.restrictedList || [];
+
+        // Fetch restricted users' basic info
+        const restrictedUsers = await prisma.user.findMany({
+            where: { id: { in: restrictedList } },
+            select: {
+                id: true,
+                firstName: true,
+                lastName: true,
+                avatar: true,
+            },
+        });
+
+        new PrivacySettingsCollection(req, res, { data: restrictedUsers })
+            .json()
+            .status(200)
+            .additional({
+                status: 'success',
+                message: 'Restricted list retrieved',
+                code: 200,
+            });
+    };
+
+    /**
+     * Update custom privacy rules
+     */
+    updateCustomPrivacyRules = async (req: Request, res: Response) => {
+        try {
+            const userId = req.user?.id!;
+            const { customPrivacyRules } = req.body;
+
+            RequestError.assertFound(userId, 'Unauthorized', 401);
+
+            // Validate custom privacy rules
+            const { CustomPrivacyService } = await import('../services/CustomPrivacyService');
+            const validation = CustomPrivacyService.validateCustomRules(customPrivacyRules);
+            
+            if (!validation.valid) {
+                RequestError.abortIf(true, `Invalid custom privacy rules: ${validation.errors?.join(', ')}`, 422);
+            }
+
+            const privacySettings = await prisma.privacySettings.upsert({
+                where: { userId },
+                update: { 
+                    customPrivacyRules,
+                    lastPrivacyReviewDate: new Date(),
+                },
+                create: {
+                    userId,
+                    customPrivacyRules,
+                    lastPrivacyReviewDate: new Date(),
+                },
+            });
+
+            // Log custom rules update
+            await logAuditEvent(userId, 'PRIVACY_CHANGE', {
+                req,
+                entityType: 'PrivacySettings',
+                entityId: privacySettings.id,
+                statusCode: 200,
+                metadata: { action: 'update_custom_rules', rulesCount: customPrivacyRules?.rules?.length || 0 },
+            });
+
+            new PrivacySettingsResource(req, res, { data: privacySettings })
+                .json()
+                .status(200)
+                .additional({
+                    status: 'success',
+                    message: 'Custom privacy rules updated',
+                    code: 200,
+                });
+        } catch (error) {
+            throw error;
+        }
+    };
+
+    /**
+     * Get default custom privacy rules template
+     */
+    getDefaultCustomRules = async (req: Request, res: Response) => {
+        const userId = req.user?.id!;
+        RequestError.assertFound(userId, 'Unauthorized', 401);
+
+        const { CustomPrivacyService } = await import('../services/CustomPrivacyService');
+        const defaultRules = CustomPrivacyService.getDefaultRules();
+
+        new PrivacySettingsResource(req, res, { data: defaultRules })
+            .json()
+            .status(200)
+            .additional({
+                status: 'success',
+                message: 'Default custom privacy rules retrieved',
                 code: 200,
             });
     };

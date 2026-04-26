@@ -23,7 +23,7 @@ describe("Tips Controller", () => {
                 firstName: faker.person.firstName(),
                 password: "Password123#",
             },
-        }) as IUser;
+        }) as unknown as IUser;
 
         receiver = await prisma.user.create({
             data: {
@@ -32,7 +32,7 @@ describe("Tips Controller", () => {
                 firstName: faker.person.firstName(),
                 password: "Password123#",
             },
-        }) as IUser;
+        }) as unknown as IUser;
 
         senderToken = generateAccessToken({
             username: sender.email,

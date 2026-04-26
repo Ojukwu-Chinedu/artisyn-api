@@ -3,6 +3,7 @@ import { Request, Response, Router } from "express";
 import AccountLinkingController from 'src/controllers/AccountLinkingController';
 import CategoryController from 'src/controllers/CategoryController';
 import DataExportController from 'src/controllers/DataExportController';
+import FriendshipController from 'src/controllers/FriendshipController';
 import PreferencesController from 'src/controllers/PreferencesController';
 import PrivacySettingsController from 'src/controllers/PrivacySettingsController';
 import ProfileController from 'src/controllers/ProfileController';
@@ -67,6 +68,27 @@ router.post('/privacy/block', authenticateToken, new PrivacySettingsController()
 router.post('/privacy/unblock', authenticateToken, new PrivacySettingsController().unblockUser);
 router.get('/privacy/blocklist', authenticateToken, new PrivacySettingsController().getBlockList);
 router.post('/privacy/retention', authenticateToken, new PrivacySettingsController().updateDataRetention);
+
+// Restricted list management
+router.post('/privacy/restrict', authenticateToken, new PrivacySettingsController().addToRestrictedList);
+router.post('/privacy/unrestrict', authenticateToken, new PrivacySettingsController().removeFromRestrictedList);
+router.get('/privacy/restricted-list', authenticateToken, new PrivacySettingsController().getRestrictedList);
+
+// Custom privacy rules management
+router.post('/privacy/custom-rules', authenticateToken, new PrivacySettingsController().updateCustomPrivacyRules);
+router.get('/privacy/custom-rules/default', authenticateToken, new PrivacySettingsController().getDefaultCustomRules);
+
+// Friendship management routes
+router.get('/friends', authenticateToken, new FriendshipController().getFriends);
+router.post('/friends/request', authenticateToken, new FriendshipController().sendFriendRequest);
+router.get('/friends/requests/pending', authenticateToken, new FriendshipController().getPendingRequests);
+router.get('/friends/requests/sent', authenticateToken, new FriendshipController().getSentRequests);
+router.post('/friends/requests/accept', authenticateToken, new FriendshipController().acceptFriendRequest);
+router.post('/friends/requests/decline', authenticateToken, new FriendshipController().declineFriendRequest);
+router.post('/friends/remove', authenticateToken, new FriendshipController().removeFriend);
+router.post('/friends/block', authenticateToken, new FriendshipController().blockUser);
+router.post('/friends/unblock', authenticateToken, new FriendshipController().unblockUser);
+router.get('/friends/blocked', authenticateToken, new FriendshipController().getBlockedUsers);
 
 // Account Linking routes
 router.get('/account-links', authenticateToken, new AccountLinkingController().getLinkedAccounts);

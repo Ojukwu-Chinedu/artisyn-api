@@ -6,7 +6,7 @@ import { JsonResource } from ".";
  * Transforms a single Job model into the standardized API response format.
  */
 export default class extends JsonResource {
-  data() {
+  data(): any {
     return {
       id: this.id,
       listingId: this.listingId,
