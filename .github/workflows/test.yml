@@ -30,7 +30,7 @@ jobs:
           - 1025:1025
 
     env:
-      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/artisyn?schema=artisyn_api
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/artisyn
       JWT_SECRET: your-jwt-secret-key
       JWT_EXPIRES_IN: 7d
       NODE_ENV: test
