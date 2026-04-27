@@ -6,17 +6,47 @@ import { prisma } from 'src/db';
 async function main () {
   console.log('Starting seed...');
 
-  // Clear existing data
-  await prisma.tip.deleteMany();
-  await prisma.review.deleteMany();
-  await prisma.artisan.deleteMany();
-  await prisma.subcategory.deleteMany();
-  await prisma.category.deleteMany();
-  await prisma.curator.deleteMany();
-  await prisma.location.deleteMany();
-  await prisma.user.deleteMany();
-
-  console.log('Cleared existing data');
+  // Clear existing data (in order to respect foreign key constraints)
+  // Delete leaf nodes first (models with foreign keys to other models)
+  // Use try-catch to handle cases where tables might be empty or not exist
+  try {
+    // Level 1: No foreign keys or only reference other leaf nodes
+    await prisma.analyticsEvent.deleteMany();
+    await prisma.dataExportRequest.deleteMany();
+    await prisma.personalAccessToken.deleteMany();
+    await prisma.passwordCodeResets.deleteMany();
+    await prisma.pendingDeletion.deleteMany();
+    await prisma.media.deleteMany();
+    
+    // Level 2: Reference Reviews
+    await prisma.reviewResponse.deleteMany();
+    await prisma.reviewReport.deleteMany();
+    
+    // Level 3: Reference Users and Artisans
+    await prisma.tip.deleteMany();
+    await prisma.review.deleteMany();
+    await prisma.job.deleteMany(); // Jobs reference Applications and Artisans
+    await prisma.application.deleteMany(); // Applications reference Artisans and Users
+    
+    // Level 4: Reference Users, Categories, Locations
+    await prisma.artisan.deleteMany(); // Artisans reference Users, Categories, Subcategories, Locations
+    await prisma.curator.deleteMany(); // Curators reference Users
+    
+    // Level 5: Reference Categories
+    await prisma.subcategory.deleteMany(); // Subcategories reference Categories
+    
+    // Level 6: No foreign keys or standalone
+    await prisma.category.deleteMany();
+    await prisma.location.deleteMany(); // Locations referenced by Users and Artisans
+    
+    // Level 7: Delete last - referenced by almost everything
+    await prisma.user.deleteMany();
+    
+    console.log('Cleared existing data');
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    console.log('Note: Could not clear all data (this is normal for fresh databases):', errorMessage);
+  }
 
   // Create admin user
   const adminPassword = await argon2.hash('admin123');
