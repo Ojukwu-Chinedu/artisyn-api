@@ -220,10 +220,42 @@ export default class extends BaseController {
             const viewerId = req.user?.id || null;
             RequestError.assertFound(targetUserId, 'User ID required', 400);
 
-// Use PrivacyService for unified visibility checking
-            const profile = await PrivacyService.getFilteredProfileData(viewerId, String(targetUserId));
+            // Fetch user, profile, and privacy settings
+            const [user, profile, privacySettings] = await Promise.all([
+                prisma.user.findUnique({
+                    where: { id: String(targetUserId) },
+                }),
+                prisma.userProfile.findUnique({
+                    where: { userId: String(targetUserId) },
+                }),
+                prisma.privacySettings.findUnique({
+                    where: { userId: String(targetUserId) },
+                }),
+            ]);
 
             RequestError.assertFound(profile, 'Profile not found', 404);
+            RequestError.assertFound(user, 'User not found', 404);
+
+            // Return 403 if profile is private
+            if (privacySettings?.profileVisibility === 'PRIVATE') {
+                return res.status(403).json({
+                    status: 'error',
+                    code: 403,
+                    message: 'This profile is private'
+                });
+            }
+
+            // Build response with conditional field inclusion
+            const publicProfile = {
+                userId: profile.userId,
+                bio: profile.bio,
+                companyName: profile.companyName,
+                createdAt: profile.createdAt,
+                dateOfBirth: profile.dateOfBirth,
+                location: privacySettings?.showLocation ? profile.location : null,
+                email: privacySettings?.showEmail ? user.email : null,
+                phone: privacySettings?.showPhone ? user.phone : null,
+            };
 
             // Log public profile view
             await logAuditEvent(req.user?.id, 'PROFILE_VIEW', {
@@ -236,14 +268,12 @@ export default class extends BaseController {
                 },
             });
 
-            new UserProfileResource(req, res, profile)
-                .json()
-                .status(200)
-                .additional({
-                    status: 'success',
-                    message: 'Public profile retrieved',
-                    code: 200,
-                });
+            res.status(200).json({
+                status: 'success',
+                code: 200,
+                message: 'Public profile retrieved',
+                data: publicProfile,
+            });
         } catch (error) {
             throw error;
         }
