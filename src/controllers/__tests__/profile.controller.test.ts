@@ -326,6 +326,40 @@ describe('ProfileController', () => {
         );
     });
 
+    it('should accept valid IANA timezone identifiers for profile timezone', async () => {
+        const response = await request(app)
+            .post('/api/test/profile')
+            .set('Authorization', `Bearer ${authToken}`)
+            .send({
+                timezone: 'America/New_York',
+            })
+            .expect(200);
+
+        expect(response.body.data).toEqual(
+            expect.objectContaining({
+                timezone: 'America/New_York',
+            })
+        );
+    });
+
+    it('should reject invalid profile timezone identifiers', async () => {
+        const response = await request(app)
+            .post('/api/test/profile')
+            .set('Authorization', `Bearer ${authToken}`)
+            .send({
+                timezone: 'Invalid/Timezone',
+            })
+            .expect(422);
+
+        expect(response.body.errors).toEqual(
+            expect.objectContaining({
+                timezone: [
+                    'The timezone must be a valid IANA time zone identifier.',
+                ],
+            })
+        );
+    });
+
     it('should track profile as public or private', async () => {
         const profile = await prisma.userProfile.create({
             data: {

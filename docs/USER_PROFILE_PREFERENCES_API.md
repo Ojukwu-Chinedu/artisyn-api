@@ -97,7 +97,7 @@ Each provided value must be a non-empty string up to 255 characters.
 - `bio`: max 500 characters
 - `profilePictureUrl`, `website`: must be valid URLs
 - `gender`: must be one of MALE, FEMALE, OTHER, PREFER_NOT_TO_SAY
-- `timezone`: valid timezone string
+- `timezone`: valid IANA time zone identifier
 
 ---
 

@@ -31,7 +31,7 @@ export const profileValidationRules: InitialRules = {
     occupation: ['string', 'max:100'],
     companyName: ['string', 'max:100'],
     location: ['string', 'max:100'],
-    timezone: ['string'],
+    timezone: ['string', 'ianaTimezone'],
     language: ['string', 'bcp47'],
     isPublic: ['boolean'],
     isProfessional: ['boolean'],
