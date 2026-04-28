@@ -48,6 +48,9 @@ setTranslationObject({
     }
 });
 
+export const BCP47_REGEX = /^[a-z]{2,3}(?:-[a-z]{3})?(?:-(?:[a-z]{4}|[a-z]{2}|[0-9]{3}))?(?:-(?:[a-z0-9]{5,8}|[0-9][a-z0-9]{3}))*$/i;
+export const IANA_TIMEZONE_REGEX = /^[A-Za-z][A-Za-z0-9_\/-]*$/;
+
 register('unique', async function (value, parameters, attribute) {
     const [modelName, field, except, exceptField] = parameters ?? [];
     return (await modelExists('exists', value, field ?? attribute, modelName, [except, exceptField])) === false
@@ -63,17 +66,7 @@ register('bcp47', function (value) {
         return false;
     }
 
-    if (typeof Intl?.Locale === 'function') {
-        try {
-            new Intl.Locale(value);
-            return true;
-        } catch {
-            return false;
-        }
-    }
-
-    const bcp47Pattern = /^[A-Za-z]{2,3}(?:-[A-Za-z]{3})?(?:-(?:[A-Za-z]{4}|[A-Za-z]{2}|[0-9]{3}))(?:-(?:[A-Za-z0-9]{5,8}|[0-9][A-Za-z0-9]{3}))*$/;
-    return bcp47Pattern.test(value);
+    return BCP47_REGEX.test(value);
 });
 
 register('ianaTimezone', function (value) {
@@ -90,8 +83,7 @@ register('ianaTimezone', function (value) {
 
         // Fallback: basic check for common timezone patterns
         // This is not exhaustive but covers most cases
-        const timezonePattern = /^[A-Za-z][A-Za-z/_-]+$/;
-        return timezonePattern.test(value) && value.length >= 3 && value.length <= 50;
+        return IANA_TIMEZONE_REGEX.test(value) && value.length >= 3 && value.length <= 50;
     } catch {
         return false;
     }

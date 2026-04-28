@@ -117,7 +117,6 @@ export const accountLinkVerifyValidationRules: InitialRules = {
 export const dataExportValidationRules: InitialRules = {
     format: ['string', 'in:json,csv'],
 };
-
 export const normalizeSocialLinks = (value: unknown): SocialLinks | undefined => {
     if (value === undefined || value === null || value === '') {
         return undefined;
